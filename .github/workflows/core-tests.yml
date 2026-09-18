@@ -1,9 +1,8 @@
 # 内核测试 —— 在三个平台上跑同一份代码。
 #
-# 这是「不装任何东西也能验证工程」的主力：push 上去就有结果。
-# 内核包里没有一行 SwiftUI / UIKit / AVFoundation，所以它本来就该跨平台通过。
-#
-# 实测（2026-09-18）：ubuntu 与 macOS 全绿；Windows 需要额外装工具链，见下。
+# 实测：ubuntu 与 macOS 用 setup-swift / Xcode 自带工具链，全绿。
+# Windows 上 setup-swift 没有 5.10 的工具链，改用 winget 装 ——
+# 这也正是用户本机要走的同一条路，顺带验证了那条路是通的。
 
 name: Core Tests
 
@@ -17,7 +16,7 @@ jobs:
   core:
     name: swift test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
@@ -27,9 +26,8 @@ jobs:
             experimental: false
           - os: macos-14
             experimental: false
-          # Windows runner 没有预装 Swift，需要显式装一份。
-          # 它先不挡路：万一 Swift for Windows 的 Foundation 有版本差异，
-          # 红了也只当参考，不阻塞另外两个平台。
+          # Windows 先不挡路：Swift for Windows 的 Foundation 偶有版本差异，
+          # 红了先看另外两个平台。跑绿了就把 experimental 改成 false。
           - os: windows-2022
             experimental: true
 
@@ -37,13 +35,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Linux / Windows 上 Swift 版本不稳定，这里钉死一个，保证结果可复现。
+      # Linux 上 Swift 版本不稳定，钉死一个保证结果可复现。
       # macOS 用 Xcode 自带的。
-      - name: Setup Swift
-        if: runner.os != 'macOS'
+      - name: Setup Swift (Linux)
+        if: runner.os == 'Linux'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.10"
+
+      # Windows runner 没有预装 Swift，setup-swift 也没有 5.10 的 Windows 构建。
+      # 直接用 winget 装 —— 用户本机就是这么装的，这条 CI 因此同时验证了那份说明。
+      - name: Setup Swift (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          winget install --id Swift.Toolchain -e --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+          $user = [System.Environment]::GetEnvironmentVariable("Path","User")
+          "$machine;$user" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Swift version
         run: swift --version
