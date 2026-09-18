@@ -32,8 +32,8 @@ function flag(name, fallback) {
 
 const PORT = Number(flag("port", "8787"));
 /** 默认只开这三项。exec 与 write 必须显式打开 —— 它们能让手机操作你的电脑。 */
-const DEFAULT_CAPABILITIES = ["ask", "read", "ls"];
-const ALL_CAPABILITIES = ["ask", "read", "ls", "exec", "write"];
+const DEFAULT_CAPABILITIES = ["ask", "complete", "read", "ls"];
+const ALL_CAPABILITIES = ["ask", "complete", "read", "ls", "exec", "write"];
 const CAPABILITIES = (flag("allow", DEFAULT_CAPABILITIES.join(",")))
   .split(",")
   .map((s) => s.trim())
@@ -126,6 +126,34 @@ function run(command, args, { cwd, timeout = 180000, shell = false } = {}) {
   });
 }
 
+/**
+ * 用一问一答的方式调用 dsh。
+ *
+ * 为什么要把提示词写进临时文件：维基正文里全是引号和换行，
+ * 直接拼进命令行会被 shell 拆开，轻则内容截断，重则执行到别的东西。
+ * 写文件再让 PowerShell / sh 读进来，内容就是内容。
+ */
+async function runDshHeadless(prompt, timeout) {
+  const tmp = path.join(os.tmpdir(), `aether-prompt-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.txt`);
+  fs.writeFileSync(tmp, prompt, "utf8");
+  try {
+    if (process.platform === "win32") {
+      const result = await run("powershell", [
+        "-NoProfile", "-NonInteractive", "-Command",
+        `& '${DSH_COMMAND}' --profile headless (Get-Content -Raw -LiteralPath '${tmp}')`,
+      ], { timeout, shell: false });
+      return result;
+    }
+    const result = await run("sh", [
+      "-c",
+      `'${DSH_COMMAND}' --profile headless "$(cat '${tmp}')"`,
+    ], { timeout, shell: false });
+    return result;
+  } finally {
+    try { fs.unlinkSync(tmp); } catch { /* 清理失败无所谓 */ }
+  }
+}
+
 function json(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -168,12 +196,21 @@ async function handle(action, body) {
       const prompt = String(body.prompt || "").trim();
       if (!prompt) return { ok: false, error: "缺少 prompt" };
       // 一问一答：dsh 跑完就退出，输出就是答案
-      const result = await run(DSH_COMMAND, ["--profile", "headless", prompt], {
-        timeout: Number(body.timeout) || 300000,
-        shell: process.platform === "win32",
-      });
+      const result = await runDshHeadless(prompt, Number(body.timeout) || 300000);
       const output = (result.stdout || "").trim() || (result.stderr || "").trim();
       return { ok: result.ok, output, ms: result.ms, code: result.code };
+    }
+
+    // 裸补全：手机把 system + 对话发过来，拿回纯文本。
+    // 这是「手机借用电脑上的模型」那条路 —— 手机端不需要任何密钥。
+    case "complete": {
+      const prompt = String(body.prompt || "").trim();
+      if (!prompt) return { ok: false, error: "缺少 prompt" };
+      const system = String(body.system || "").trim();
+      const full = system ? system + "\\n\\n" + prompt : prompt;
+      const result = await runDshHeadless(full, Number(body.timeout) || 300000);
+      const output = (result.stdout || "").trim() || (result.stderr || "").trim();
+      return { ok: result.ok, output, ms: result.ms };
     }
 
     case "exec": {
@@ -254,8 +291,10 @@ const server = http.createServer(async (req, res) => {
   if (action !== "status" && !ALL_CAPABILITIES.includes(action)) {
     return json(res, 404, { ok: false, error: "没有这个操作" });
   }
-  if (action !== "status" && !CAPABILITIES.includes(action)) {
-    return json(res, 403, { ok: false, error: `操作 ${action} 没有开放。启动时用 --allow 打开它。` });
+  // complete 与 ask 是同一件事的两面（都用电脑上的模型），共用一张闸。
+  const gate = action === "complete" ? "ask" : action;
+  if (action !== "status" && !CAPABILITIES.includes(gate)) {
+    return json(res, 403, { ok: false, error: `操作 ${gate} 没有开放。启动时用 --allow 打开它。` });
   }
 
   const body = req.method === "POST" ? await readBody(req) : {};

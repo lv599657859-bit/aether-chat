@@ -22,6 +22,7 @@ struct SettingsView: View {
                         set: { value in Task { await env.updateSettings { $0.providerID = value } } }
                     )) {
                         Text("离线演示").tag("mock")
+                        Text("电脑上的模型").tag("remote")
                         Text("OpenAI").tag("openai")
                         Text("DeepSeek").tag("deepseek")
                         Text("自建 / 兼容").tag("custom")

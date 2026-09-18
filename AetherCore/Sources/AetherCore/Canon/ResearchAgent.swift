@@ -112,7 +112,12 @@ final class ResearchAgent: @unchecked Sendable {
             facts = Self.heuristicExtract(from: documents)
             if !facts.isEmpty {
                 draft.researchLog.append("模型不可用，改用关键词抽取，得到 \(facts.count) 条")
-                draft.warnings.append("这次没有用模型整理资料。设定是关键词抽出来的，准确度有限 —— 想要精确复刻，请在「我的 → 生成引擎」里配一个服务。")
+                draft.warnings.append("""
+                这次没有用模型整理资料 —— 设定是从正文里按关键词抽的，条数少、准确度有限。
+                想精确复刻，两个办法：
+                  · 我的 → 生成引擎，填一个服务密钥（最直接）
+                  · 我的 → 电脑桥接，配对后把生成引擎选成「电脑上的模型」—— 手机端不需要任何密钥
+                """)
             }
         }
 

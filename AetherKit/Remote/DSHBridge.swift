@@ -107,8 +107,10 @@ actor DSHBridgeClient {
     func call(_ action: String, body: [String: Any], ignoringCapability: Bool = false) async throws -> [String: Any] {
         let config = RemoteBridgeStore.load()
         guard config.enabled, let base = config.baseURL else { throw BridgeError.notConfigured }
-        guard ignoringCapability || config.capabilities.contains(action) else {
-            throw BridgeError.capabilityOff(action)
+        // complete 与 ask 是一件事的两面（都用电脑上的模型），共用一张闸。
+        let gate = action == "complete" ? "ask" : action
+        guard ignoringCapability || config.capabilities.contains(gate) else {
+            throw BridgeError.capabilityOff(gate)
         }
         let token = RemoteBridgeStore.token
         guard !token.isBlank else { throw BridgeError.notConfigured }

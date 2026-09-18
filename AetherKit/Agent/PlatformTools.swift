@@ -7,6 +7,13 @@ import Foundation
 /// 内核、流水线、界面全都不用改。
 enum PlatformTools {
     static func install(into registry: ToolRegistry = .builtin) {
+        // 把「电脑上的模型」这一档接进 ProviderHub。
+        // 没配对桥接时工厂返回 nil —— ProviderHub 会自动退回离线引擎，
+        // 而不是让聊天直接报「连不上」。
+        ProviderHub.remoteProviderFactory = {
+            RemoteBridgeStore.load().enabled ? RemoteLLMProvider() : nil
+        }
+
         registry.register(DesignVoiceTool())
         // 远程桥接的工具。没配对 / 没开开关时，它们会在调用时直接返回
         // 「还没有连接电脑上的桥接」，而不是从工具表里消失 ——
