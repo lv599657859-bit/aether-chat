@@ -37,6 +37,10 @@ final class AppEnvironment {
 
     func bootstrap() async {
         guard !isBootstrapped else { return }
+        // 把平台专属能力注册进工具表。
+        // 内核只带跨平台的工具；用到 AVFoundation 的（比如配声音）由外壳补。
+        PlatformTools.install(into: .builtin)
+
         await store.bootstrap()
         settings = await store.currentSettings()
         ProviderHub.shared.rebuild(settings: settings)

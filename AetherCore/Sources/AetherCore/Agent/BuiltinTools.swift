@@ -14,7 +14,10 @@ enum BuiltinTools {
         registry.register(ListCharactersTool())
         registry.register(RecallMemoryTool())
         registry.register(RememberTool())
-        registry.register(DesignVoiceTool())
+        // 注意：涉及平台能力的工具不在这里注册。
+        // 「配声音」要用 AVFoundation，属于苹果外壳 ——
+        // 由 AetherKit 的 PlatformTools 在启动时补进来。
+        // 内核不知道平台能力的存在，这正是分层该有的样子。
     }
 }
 
@@ -143,7 +146,6 @@ struct CreateCharacterTool: AgentTool {
         }
 
         persona.presentation.avatarKind = .orb
-        persona.presentation.voice = VoiceDesigner().resolve(await VoiceDesigner().design(for: persona))
         await WorldStore.shared.upsert(persona)
 
         if let bundleID = persona.core.canonBundleID, let draft = await AgentScratch.shared.get(key: "draft:\(name)") as? PersonaDraft, let bundle = draft.bundle {
@@ -152,7 +154,7 @@ struct CreateCharacterTool: AgentTool {
         }
 
         return .ok(
-            "已创建「\(persona.name)」，人格指纹 \(persona.core.fingerprint.prefix(8))，并自动配好了声音。",
+            "已创建「\(persona.name)」，人格指纹 \(persona.core.fingerprint.prefix(8))。如果 design_voice 工具可用，可以继续给她配一副嗓子。",
             display: "创建了 \(persona.name)",
             artifacts: [persona.id.uuidString]
         )
@@ -233,36 +235,6 @@ struct RememberTool: AgentTool {
         )
         await WorldStore.shared.upsertMemories([item])
         return .ok("已写入记忆：\(text)", display: "记住了")
-    }
-}
-
-// MARK: - 声音
-
-struct DesignVoiceTool: AgentTool {
-    let name = "design_voice"
-    let summary = "给一个角色自动配声音（音高、语速、音色），并保存。"
-    let parameters = [
-        ToolParameter(name: "persona", description: "角色名"),
-    ]
-    let isReadOnly = false
-
-    func run(_ arguments: [String: String], context: AgentContext) async -> ToolResult {
-        guard let name = arguments["persona"] else { return .fail("缺少 persona") }
-        let personas = await WorldStore.shared.allPersonas()
-        guard let persona = personas.first(where: { $0.name == name }) else {
-            return .fail("没有叫「\(name)」的角色")
-        }
-        let designer = VoiceDesigner()
-        let design = await designer.design(for: persona)
-        let profile = designer.resolve(design)
-        await WorldStore.shared.updatePersona(persona.id) { p in
-            p.presentation.voice = profile
-        }
-        let voiceName = VoiceCatalog.entry(for: profile.systemVoiceID)?.name ?? "未指定"
-        return .ok(
-            "音色：\(design.timbrePrompt)\n语速 \(String(format: "%.2f", profile.rate))，音高 \(String(format: "%.2f", profile.pitch))，选中「\(voiceName)」（\(design.note)）",
-            display: "配好了声音"
-        )
     }
 }
 
