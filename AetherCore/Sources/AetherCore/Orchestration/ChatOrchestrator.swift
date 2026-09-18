@@ -87,12 +87,36 @@ final class ChatOrchestrator: @unchecked Sendable {
         await store.append(userMessage)
         emit(.userMessage(userMessage))
 
-        // 2. 关系推进
+        // 2. 流水线 —— 消息不是「进来就回」
+        //    限流 → 兴趣度 → 心流 → 沉浸守门。任何一环都能拦下这次回复。
+        var pipelineContext = ReplyContext(
+            conversationID: conversationID,
+            persona: persona,
+            incomingText: text,
+            attachments: attachments,
+            isGroup: conversation.isGroup,
+            store: store
+        )
+        pipelineContext = await ReplyPipeline.standard.run(pipelineContext)
+        await MindFlow.shared.noteIncoming(persona.id)
+
+        guard pipelineContext.shouldReply else {
+            Log.autonomy.debug("pipeline suppressed: \(pipelineContext.suppressReason ?? "-")")
+            emit(.finished(personaID: personaID))
+            return
+        }
+        if pipelineContext.replyDelay > 0 {
+            let capped = min(pipelineContext.replyDelay, 25)
+            emit(.typingStarted(personaID: personaID, phrase: "……"))
+            try? await Task.sleep(nanoseconds: UInt64(capped * 1_000_000_000))
+        }
+
+        // 3. 关系推进
         var edge = await store.edge(from: personaID, to: nil)
         edge = relationships.updateUserEdge(edge, userText: text, personaReplied: true)
         await store.upsert(edge)
 
-        // 3. 组装上下文
+        // 4. 组装上下文
         let engine = ContextEngine(embedder: ProviderHub.shared.embedder, budget: budget)
         let history = await store.messages(in: conversationID)
         let memories = await store.memories(stream: persona.memoryStreamID)
@@ -108,14 +132,24 @@ final class ChatOrchestrator: @unchecked Sendable {
             userInput: text
         )
 
-        // 4. 打字中……（用角色化的文案，不用「正在生成」）
+        // 流水线各环节追加的说明，拼进 system prompt
+        if !pipelineContext.injections.isEmpty {
+            let merged = workingSet.systemPrompt + "\n\n" + pipelineContext.injections.joined(separator: "\n\n")
+            workingSet.systemPrompt = merged
+            if !workingSet.messages.isEmpty {
+                workingSet.messages[0] = LLMMessage(role: .system, content: merged)
+            }
+            workingSet.notes.append("流水线注入 \(pipelineContext.injections.count) 条")
+        }
+
+        // 5. 打字中……（用角色化的文案，不用「正在生成」）
         let phrase = ImmersionGuard.typingPhrase(
             seed: text.count + Int(Date().timeIntervalSince1970),
             tempo: persona.presentation.typingTempo
         )
         emit(.typingStarted(personaID: personaID, phrase: phrase))
 
-        // 5. 流式生成 + 实时解析演出
+        // 6. 流式生成 + 实时解析演出
         let started = Date()
         var parser = CueStreamParser()
         var currentSegment = ""
@@ -147,7 +181,7 @@ final class ChatOrchestrator: @unchecked Sendable {
             message.hidden.providerID = ProviderHub.shared.llm.id
             message.hidden.modelID = settings.chatModel
             message.hidden.promptTokens = workingSet.tokenEstimate
-            message.hidden.notes = workingSet.notes
+            message.hidden.notes = workingSet.notes + pipelineContext.trace
             message.hidden.oocBlocks = blocks
             if let monologue { message.hidden.innerMonologue = monologue }
             segments.append(message)
@@ -219,10 +253,16 @@ final class ChatOrchestrator: @unchecked Sendable {
         }
 
         await store.append(contentsOf: delivered, to: conversationID)
+
+        // 心流：这一轮说上话了，把她的状态更新掉
+        await MindFlow.shared.noteSpoken(personaID)
+        if let emotion = delivered.compactMap({ $0.emotion }).last {
+            await MindFlow.shared.setMood(personaID, mood: emotion)
+        }
         for message in delivered { emit(.segment(message)) }
         emit(.finished(personaID: personaID))
 
-        // 9. 后台：记忆、摘要、关系
+        // 后台：记忆、摘要、关系
         await postProcess(
             persona: persona,
             conversation: conversation,

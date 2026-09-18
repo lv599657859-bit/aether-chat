@@ -74,6 +74,24 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        AgentConsoleView()
+                    } label: {
+                        HStack {
+                            Label("代理控制台", systemImage: "terminal")
+                            Spacer()
+                            Text("\(ToolRegistry.builtin.all.count) 个工具")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("代理")
+                } footer: {
+                    Text("给它一句话，它自己分解任务、挑工具、看结果、再决定下一步。角色能自己搜资料、建卡、配声音、读写记忆，靠的就是这一层。")
+                }
+
+                Section {
                     Slider(value: Binding(
                         get: { env.settings.performanceIntensity },
                         set: { value in Task { await env.updateSettings { $0.performanceIntensity = value } } }
