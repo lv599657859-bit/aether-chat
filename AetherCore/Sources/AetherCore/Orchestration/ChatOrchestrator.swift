@@ -121,7 +121,7 @@ final class ChatOrchestrator: @unchecked Sendable {
         let history = await store.messages(in: conversationID)
         let memories = await store.memories(stream: persona.memoryStreamID)
         let canon = await store.bundlesFor(personaID)
-        let workingSet = await engine.workingSet(
+        var workingSet = await engine.workingSet(
             persona: persona,
             conversation: conversation,
             history: history,
