@@ -266,8 +266,11 @@ final class AgentAndPipelineTests: XCTestCase {
         for _ in 0..<3 {
             await learner.observe(userText: "好家伙", personaID: persona.id)
         }
-        XCTAssertNotNil(await learner.briefing(for: persona))
+        // 注意：xctest 的断言参数是自动闭包，里面不能写 await —— 先取值再断言。
+        let before = await learner.briefing(for: persona)
+        XCTAssertNotNil(before, "重复三次之后应该已经学会了")
         await learner.clear(personaID: persona.id)
-        XCTAssertNil(await learner.briefing(for: persona))
+        let after = await learner.briefing(for: persona)
+        XCTAssertNil(after, "清空之后不该再注入")
     }
 }
