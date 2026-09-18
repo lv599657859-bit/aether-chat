@@ -1,0 +1,28 @@
+# ---- Xcode ----
+*.xcodeproj/
+xcuserdata/
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+
+# ---- SwiftPM ----
+.build/
+.swiftpm/
+Package.resolved
+
+# ---- 测试产物 ----
+test-output.log
+
+# ---- secrets —— 永远不要提交 ----
+Secrets.plist
+*.secrets.json
+.env
+
+# ---- macOS ----
+.DS_Store
+
+# ---- 素材（体积大，走 Git LFS 或对象存储）----
+Assets/AvatarModels/*.vrm
+Assets/AvatarModels/*.moc3
+Assets/AvatarModels/*.usdz
+Assets/AvatarModels/*.png
