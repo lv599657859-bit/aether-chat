@@ -30,6 +30,18 @@ extension Double {
     func lerp(to other: Double, _ t: Double) -> Double { self + (other - self) * t }
 }
 
+/// Float 版单独写一份。
+///
+/// 不写这个的话，编译器会去找别的叫 clamped 的东西
+/// （比如 ClosedRange.clamped(to:)，或者干脆找 Double 的那个然后报
+/// 「inaccessible due to package protection level」这种看不懂的错），
+/// 而不是直接告诉你「Float 上没有这个方法」。
+/// 音频参数、音高语速、滑杆值全是 Float，没有它寸步难行。
+extension Float {
+    func clamped(_ lo: Float, _ hi: Float) -> Float { Swift.min(hi, Swift.max(lo, self)) }
+    func lerp(to other: Float, _ t: Float) -> Float { self + (other - self) * t }
+}
+
 /// 中文友好的 token 估算：CJK 约 1 字 = 1 token，英文约 4 字符 = 1 token。
 ///
 /// 不需要精确 —— 它的用途是让上下文预算有个数量级正确的把握，
