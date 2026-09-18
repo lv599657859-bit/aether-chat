@@ -232,18 +232,42 @@ final class AgentAndPipelineTests: XCTestCase {
     /// 出现次数不够的说法不该被注入 —— 学一次就开始学舌很假。
     func testOnlyAdoptedExpressionsAreInjected() async {
         let learner = ExpressionLearner()
-        let personaID = UUID()
-        let persona = PersonaFactory.forgeOriginal(name: "青", seed: .empty)
+        // 注意：必须用 persona.id 去 observe。用另一个 UUID 的话，
+        // 统计落在一条没人查的账上，测试会永远失败 —— 这个坑我踩过一次。
+        let persona = PersonaFactory.forgeOriginal(name: "测试用-\(UUID().uuidString.prefix(8))", seed: .empty)
 
-        await learner.observe(userText: "绝了", personaID: personaID)
+        await learner.observe(userText: "绝了", personaID: persona.id)
         let briefingAfterOne = await learner.briefing(for: persona)
         XCTAssertNil(briefingAfterOne, "只说了一次就学会，太急了")
 
         for _ in 0..<3 {
-            await learner.observe(userText: "绝了", personaID: personaID)
+            await learner.observe(userText: "绝了", personaID: persona.id)
         }
         let briefingAfterFour = await learner.briefing(for: persona)
         XCTAssertNotNil(briefingAfterFour)
         XCTAssertTrue(briefingAfterFour?.contains("绝了") ?? false)
+    }
+
+    /// 学到的说法要真的被用起来才算学会 —— noteUsed 记账。
+    func testNoteUsedMarksExpressionAsUsed() async {
+        let learner = ExpressionLearner()
+        let persona = PersonaFactory.forgeOriginal(name: "测试用-\(UUID().uuidString.prefix(8))", seed: .empty)
+        for _ in 0..<3 {
+            await learner.observe(userText: "破防了", personaID: persona.id)
+        }
+        await learner.noteUsed(personaID: persona.id, text: "我也有点破防了")
+        let adopted = await learner.adopted(for: persona.id)
+        XCTAssertTrue(adopted.contains { $0.usedByPersona > 0 }, "用了却没记账")
+    }
+
+    func testForgetRemovesExpression() async {
+        let learner = ExpressionLearner()
+        let persona = PersonaFactory.forgeOriginal(name: "测试用-\(UUID().uuidString.prefix(8))", seed: .empty)
+        for _ in 0..<3 {
+            await learner.observe(userText: "好家伙", personaID: persona.id)
+        }
+        XCTAssertNotNil(await learner.briefing(for: persona))
+        await learner.clear(personaID: persona.id)
+        XCTAssertNil(await learner.briefing(for: persona))
     }
 }
