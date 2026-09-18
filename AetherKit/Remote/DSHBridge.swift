@@ -48,7 +48,7 @@ enum RemoteBridgeStore {
 
     static var token: String {
         get { Keychain.get(tokenKey) ?? "" }
-        set { Keychain.set(newValue, forKey: tokenKey) }
+        set { Keychain.set(newValue, for: tokenKey) }
     }
 }
 
