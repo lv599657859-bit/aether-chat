@@ -1,8 +1,14 @@
-# 内核测试 —— 在三个平台上跑同一份代码。
+# 内核测试 —— 同一份代码，尽可能多的平台上跑。
 #
-# 实测：ubuntu 与 macOS 用 setup-swift / Xcode 自带工具链，全绿。
-# Windows 上 setup-swift 没有 5.10 的工具链，改用 winget 装 ——
-# 这也正是用户本机要走的同一条路，顺带验证了那条路是通的。
+# 已验证可用：
+#   ubuntu-22.04  setup-swift@v2 + 5.10，稳定
+#   macos-14      Xcode 自带工具链，稳定
+#
+# Windows 是个已知的坑：runner 没预装 Swift，winget 不在 PATH，
+# setup-swift 对 Windows 支持是坏的（会打印 "not available" 后静默成功）。
+# 这里改成三段式：官方安装包直装 → 探测是否可用 → 可用才跑测试。
+# 装不上不会让 CI 变红，但会在日志里明确写出「这台 runner 没跑成测试」，
+# 而不是假装跑过了。
 
 name: Core Tests
 
@@ -16,50 +22,63 @@ jobs:
   core:
     name: swift test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
-    continue-on-error: ${{ matrix.experimental }}
+    timeout-minutes: 45
+
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-22.04
-            experimental: false
           - os: macos-14
-            experimental: false
-          # Windows 先不挡路：Swift for Windows 的 Foundation 偶有版本差异，
-          # 红了先看另外两个平台。跑绿了就把 experimental 改成 false。
           - os: windows-2022
-            experimental: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Linux 上 Swift 版本不稳定，钉死一个保证结果可复现。
-      # macOS 用 Xcode 自带的。
       - name: Setup Swift (Linux)
         if: runner.os == 'Linux'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.10"
 
-      # Windows runner 没有预装 Swift。
-      # 两个坑：winget 在 runner 的 PowerShell 里不在 PATH；setup-swift 对
-      # 版本号要求精确到补丁（写 5.10 会报 "not available"，5.10.1 才有）。
-      # 这一步不挡路：装不上也不会让整个 job 崩在 setup 上，
-      # 后面的 swift --version 会把真实情况说出来。
-      - name: Setup Swift (Windows)
+      # Windows：直接跑官方安装包。WiX Burn 的静默参数是 -quiet -norestart。
+      # 这一步允许失败 —— 装不上就走后面的降级分支。
+      - name: Setup Swift (Windows, best effort)
         if: runner.os == 'Windows'
         continue-on-error: true
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: "5.10.1"
+        shell: pwsh
+        run: |
+          $url = "https://download.swift.org/swift-6.1-release/windows10/swift-6.1-RELEASE/swift-6.1-RELEASE-windows10.exe"
+          Write-Host "下载 $url"
+          Invoke-WebRequest -Uri $url -OutFile "$env:TEMP\swift-setup.exe" -UseBasicParsing
+          Write-Host "安装中（可能需要几分钟）"
+          Start-Process -FilePath "$env:TEMP\swift-setup.exe" -ArgumentList "-quiet","-norestart" -Wait
+          $candidates = @(
+            "$env:SystemDrive\Library\Developer\Toolchains\unknown-Asserts-development.xctoolchain\usr\bin",
+            "$env:SystemDrive\Library\Developer\Platforms\Windows.platform\Developer\SDKs\Windows.sdk\usr\bin",
+            "$env:LOCALAPPDATA\Programs\Swift\Toolchains\6.1.0+Asserts\usr\bin"
+          )
+          foreach ($p in $candidates) {
+            if (Test-Path $p) { Write-Host "找到工具链: $p"; $p | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append }
+          }
 
-      - name: Swift version
-        run: swift --version
+      - name: Swift availability
+        id: probe
+        shell: bash
+        run: |
+          if command -v swift >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            swift --version
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=这台 runner 上没有 Swift::Windows runner 装不上 Swift for Windows，内核测试本次未在 Windows 上执行。ubuntu 与 macOS 已覆盖跨平台验证；本机怎么装见 docs/07-无Mac测试.md。"
+          fi
 
       - name: Build core
+        if: steps.probe.outputs.available == 'true'
         run: swift build --package-path AetherCore
 
       - name: Test core
+        if: steps.probe.outputs.available == 'true'
         run: swift test --package-path AetherCore
