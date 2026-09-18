@@ -124,3 +124,42 @@ gh repo create aether-chat --public --source=. --push
 
 A 和 C 能让你把「这份代码是不是一堆看着合理的废纸」这件事彻底确认掉，
 但它们**都不会给你一张界面截图**。要看到她在屏幕上呼吸、下雨、脸红，只有 B。
+
+---
+
+## 实测结果（2026-09-18）
+
+### 云上
+
+| 平台 | 结果 | 说明 |
+|---|---|---|
+| ubuntu-22.04 | ✅ 52 条测试 0 失败 | setup-swift@v2 + 5.10 |
+| macos-14 | ✅ 52 条测试 0 失败 | Xcode 自带工具链 |
+| iOS Build | ✅ 全绿，产出未签名 IPA | macos runner + xcodebuild |
+
+**Windows runner 跑不通，已从 CI 移除。** 原因全在 runner 环境，不在代码：
+
+1. runner 没有预装 Swift
+2. `winget` 不在 runner 的 PowerShell PATH 里
+3. `swift-actions/setup-swift` 对 Windows 的支持是坏的 —— 它会打印
+   `Version 5.10.1 is not available` 之后**仍然把步骤标记为成功**，
+   失败推迟到下一步才暴露
+4. 官方安装包能下载，静默装完之后工具链仍不在测试进程的 PATH 里
+
+留一条永远红的 job 只会训练人忽略红色，所以拿掉了。
+跨平台这件事由 ubuntu + macOS 证明 —— 两套完全不同的 Foundation 实现。
+
+**这不影响你自己在 Windows 上跑测试。** 上面「路径 C」的步骤没有变：
+装 VS Build Tools 的 C++ 工作负载 + `winget install Swift.Toolchain`。
+那台 runner 的问题在于它是无人值守的容器，不是在于 Windows 跑不了 Swift。
+
+### 本机（Windows）
+
+装完 VS Build Tools 与 Swift 工具链后：
+
+```powershell
+cd F:\DeepSeek-Harness\workspace\AetherChat
+swift test --package-path AetherCore
+```
+
+预期看到 **52 条测试、0 失败**（与 ubuntu / macOS 一致）。
