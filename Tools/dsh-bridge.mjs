@@ -248,10 +248,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   const action = url.pathname.replace(/^\//, "") || "status";
-  if (!ALL_CAPABILITIES.includes(action)) {
+
+  // status 是握手用的，不属于「能力」，所以不参与白名单判定 ——
+  // 手机上「测试连接」按的就是它。
+  if (action !== "status" && !ALL_CAPABILITIES.includes(action)) {
     return json(res, 404, { ok: false, error: "没有这个操作" });
   }
-  if (!CAPABILITIES.includes(action)) {
+  if (action !== "status" && !CAPABILITIES.includes(action)) {
     return json(res, 403, { ok: false, error: `操作 ${action} 没有开放。启动时用 --allow 打开它。` });
   }
 
