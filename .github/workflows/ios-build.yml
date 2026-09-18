@@ -1,12 +1,7 @@
 # 云端编译回环 —— 没有 Mac 也能验证这份工程能不能编译。
 #
-# 用法：
-#   1. 把 AetherChat 推到一个 GitHub 仓库（公开库的 macOS runner 是免费的，且不限时长）
-#   2. push 之后自动触发；也可以在 Actions 页手动 Run workflow
-#   3. 跑完下载 build-log 这个 artifact，把报错贴回来给我改
-#
-# 注意：如果你把 AetherChat 文件夹本身当成仓库根目录，
-# 把下面所有 working-directory: AetherChat 删掉即可。
+# 注意：这个仓库的根目录**就是** AetherChat 工程目录，
+# 所以所有路径都相对仓库根，不要再套一层 AetherChat/。
 
 name: iOS Build
 
@@ -21,9 +16,6 @@ jobs:
     name: Build (iOS Simulator)
     runs-on: macos-14
     timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: AetherChat
 
     steps:
       - name: Checkout
@@ -74,8 +66,8 @@ jobs:
         with:
           name: build-log
           path: |
-            AetherChat/build.log
-            AetherChat/test.log
+            build.log
+            test.log
           if-no-files-found: warn
 
       # 编译过了就把 .app 存下来 —— 虽然模拟器包对 Windows 没用，
@@ -85,5 +77,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: AetherChat-simulator-app
-          path: AetherChat/build/DerivedData/Build/Products/Debug-iphonesimulator
+          path: build/DerivedData/Build/Products/Debug-iphonesimulator
           if-no-files-found: warn
