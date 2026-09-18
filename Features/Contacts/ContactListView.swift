@@ -3,6 +3,7 @@ import SwiftUI
 struct ContactListView: View {
     @Environment(AppEnvironment.self) private var env
     @State private var showStudio = false
+    @State private var showSearch = false
     @State private var selected: Persona?
     @State private var path: [Persona] = []
 
@@ -20,9 +21,13 @@ struct ContactListView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("创造一个人") { showStudio = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Color(hex: "#6C5CE7"))
+                        Button { showSearch = true } label: {
+                            Label("搜一个角色", systemImage: "magnifyingglass")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(hex: "#6C5CE7"))
+
+                        Button("原创一个") { showStudio = true }
                     }
                     .padding()
                 } else {
@@ -44,13 +49,23 @@ struct ContactListView: View {
             .navigationTitle("联系人")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showStudio = true } label: { Image(systemName: "plus") }
+                    Menu {
+                        Button { showSearch = true } label: {
+                            Label("搜一个角色", systemImage: "magnifyingglass")
+                        }
+                        Button { showStudio = true } label: {
+                            Label("原创一个", systemImage: "square.and.pencil")
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
                 }
             }
             .navigationDestination(for: Persona.self) { persona in
                 PersonaDetailView(persona: persona)
             }
             .sheet(isPresented: $showStudio) { PersonaStudioView() }
+            .sheet(isPresented: $showSearch) { CharacterSearchView() }
         }
     }
 }
@@ -103,6 +118,7 @@ struct PersonaDetailView: View {
     @Environment(AppEnvironment.self) private var env
     let persona: Persona
     @State private var showCanon = false
+    @State private var showVoice = false
     @State private var showRelationship = false
 
     var body: some View {
@@ -160,6 +176,27 @@ struct PersonaDetailView: View {
             }
 
             Section {
+                Button {
+                    showVoice = true
+                } label: {
+                    HStack {
+                        Label("配音与调音", systemImage: "waveform")
+                        Spacer()
+                        Text(persona.presentation.voice.systemVoiceID.flatMap { VoiceCatalog.entry(for: $0)?.name } ?? "未指定")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("「\(VoiceDesigner.sampleLine(for: persona))」")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("声音")
+            } footer: {
+                Text("调音色、语速、音高，不影响人格。")
+            }
+
+            Section {
                 Button("调整外在（不影响人格）") { showCanon = true }
                 Button(role: .destructive) {
                     Task { await env.delete(persona: persona) }
@@ -168,6 +205,9 @@ struct PersonaDetailView: View {
         }
         .navigationTitle(persona.name)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showVoice) {
+            VoiceStudioView(persona: persona)
+        }
         .sheet(isPresented: $showCanon) {
             CanonViewer(persona: persona)
         }

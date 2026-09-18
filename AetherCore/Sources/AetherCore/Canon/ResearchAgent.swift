@@ -105,6 +105,17 @@ final class ResearchAgent: @unchecked Sendable {
 
         progress("整理出 \(facts.count) 条原始设定，正在去重与校验…")
 
+        // 没有模型（或模型没吐出可用 JSON）时的兜底：直接从资料正文里抽。
+        // 这样「搜一个角色」在没有 API Key 的机器上也不是一条死路 ——
+        // 检索本身本来就不需要密钥，只有整理需要。
+        if facts.isEmpty {
+            facts = Self.heuristicExtract(from: documents)
+            if !facts.isEmpty {
+                draft.researchLog.append("模型不可用，改用关键词抽取，得到 \(facts.count) 条")
+                draft.warnings.append("这次没有用模型整理资料。设定是关键词抽出来的，准确度有限 —— 想要精确复刻，请在「我的 → 生成引擎」里配一个服务。")
+            }
+        }
+
         // ── 3. 去重、合并、定置信度 ────────────────────────────────
         let merged = deduplicate(facts, fidelity: options.fidelity)
 
@@ -241,6 +252,100 @@ final class ResearchAgent: @unchecked Sendable {
                 isHard: false
             )
         }
+    }
+
+    // MARK: - 无模型时的兜底抽取
+
+    /// 关键词抽取。
+    ///
+    /// 不是「假装在工作」—— 维基正文的结构其实相当可利用：
+    ///   首段通常是身份概述；含「身高/生日/发色/声优」的行是硬设定；
+    ///   「」里是台词样本；章节标题是专有名词。
+    /// 抽出来的东西不如模型整理的干净，但比什么都没有强得多。
+    static func heuristicExtract(from documents: [FetchedDocument]) -> [CanonFact] {
+        var facts: [CanonFact] = []
+
+        let markers: [(String, CanonFact.Category)] = [
+            ("身高", .appearance), ("体重", .appearance), ("生日", .appearance),
+            ("血型", .appearance), ("发色", .appearance), ("瞳色", .appearance),
+            ("年龄", .appearance), ("三围", .appearance), ("服装", .appearance),
+            ("声优", .speech), ("配音", .speech), ("语气", .speech), ("口癖", .speech),
+            ("性格", .personality), ("喜欢", .personality), ("讨厌", .personality),
+            ("能力", .ability), ("武器", .ability), ("技能", .ability),
+            ("所属", .world), ("阵营", .world), ("组织", .world),
+            ("关系", .relation), ("亲属", .relation), ("同伴", .relation),
+        ]
+
+        for document in documents {
+            let source = document.source
+            let lines = document.text
+                .components(separatedBy: "\n")
+                .map { $0.trimmed }
+                .filter { !$0.isEmpty }
+
+            // 1. 开头几行 = 身份概述
+            let head = lines.prefix(6).joined(separator: " ")
+            if head.count > 30 {
+                facts.append(CanonFact(
+                    category: .identity,
+                    title: "身份概述",
+                    body: String(head.prefix(180)),
+                    confidence: 0.6,
+                    sources: [source]
+                ))
+            }
+
+            // 2. 含标记词的行 = 硬设定
+            for line in lines where line.count >= 8 && line.count <= 140 {
+                for (marker, category) in markers where line.contains(marker) {
+                    facts.append(CanonFact(
+                        category: category,
+                        title: marker,
+                        body: line,
+                        confidence: 0.55,
+                        sources: [source]
+                    ))
+                    break
+                }
+            }
+
+            // 3. 引号里的短句 = 台词样本
+            for quote in Self.extractQuotes(document.text).prefix(10) {
+                facts.append(CanonFact(
+                    category: .quote, title: "台词", body: quote,
+                    confidence: 0.45, sources: [source]
+                ))
+            }
+        }
+
+        // 去重
+        var seen = Set<String>()
+        return facts.filter { fact in
+            let key = fact.category.rawValue + "|" + String(fact.body.prefix(30))
+            if seen.contains(key) { return false }
+            seen.insert(key)
+            return true
+        }
+    }
+
+    private static func extractQuotes(_ text: String) -> [String] {
+        var result: [String] = []
+        let pairs: [(Character, Character)] = [("「", "」"), ("“", "”")]
+        for (open, close) in pairs {
+            var current = ""
+            var capturing = false
+            for character in text {
+                if character == open { capturing = true; current = ""; continue }
+                if character == close {
+                    capturing = false
+                    let line = current.trimmed
+                    if line.count >= 6 && line.count <= 60 { result.append(line) }
+                    continue
+                }
+                if capturing { current.append(character) }
+            }
+        }
+        return result
     }
 
     // MARK: - 去重 / 冲突 / 铁律

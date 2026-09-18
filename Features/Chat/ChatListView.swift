@@ -164,6 +164,7 @@ struct PersonaPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     let onPick: (Persona) -> Void
     @State private var showStudio = false
+    @State private var showSearch = false
 
     var body: some View {
         NavigationStack {
@@ -176,9 +177,13 @@ struct PersonaPickerSheet: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("开始创造") { showStudio = true }
-                            .buttonStyle(.borderedProminent)
-                            .tint(Color(hex: "#6C5CE7"))
+                        Button { showSearch = true } label: {
+                            Label("搜一个角色", systemImage: "magnifyingglass")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color(hex: "#6C5CE7"))
+
+                        Button("原创一个") { showStudio = true }
                     }
                     .padding()
                 } else {
@@ -213,6 +218,9 @@ struct PersonaPickerSheet: View {
             }
             .sheet(isPresented: $showStudio) {
                 PersonaStudioView()
+            }
+            .sheet(isPresented: $showSearch) {
+                CharacterSearchView()
             }
         }
     }
