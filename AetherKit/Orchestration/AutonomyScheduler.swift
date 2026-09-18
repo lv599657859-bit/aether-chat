@@ -65,7 +65,7 @@ final class AutonomyScheduler: @unchecked Sendable {
         case recall(String)         // "突然想起你说的"
         case dailyPhoto(String)     // 日常照片
         case voiceNote(String)      // 语音
-        case silence()
+        case silence
     }
 
     private func pickOutreachKind(hour: Int, edge: RelationshipEdge, settings: AppSettings) -> OutreachKind {
@@ -83,7 +83,7 @@ final class AutonomyScheduler: @unchecked Sendable {
         kinds.append(.voiceNote("录了段话"))
         if edge.affinity > 0.4 { kinds.append(.recall("忽然想起你之前说过的事。")) }
         kinds.append(.greeting("……"))
-        return kinds.randomElement() ?? .silence()
+        return kinds.randomElement() ?? .silence
     }
 
     private func deliverOutreach(

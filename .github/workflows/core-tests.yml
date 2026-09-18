@@ -1,10 +1,9 @@
 # 内核测试 —— 在三个平台上跑同一份代码。
 #
 # 这是「不装任何东西也能验证工程」的主力：push 上去就有结果。
-# Windows runner 里已经带了 Visual Studio 2022 + C++ 工作负载，
-# 所以它跑绿了，就等于「你本机装完 VS + Swift 之后也能跑绿」。
-#
 # 内核包里没有一行 SwiftUI / UIKit / AVFoundation，所以它本来就该跨平台通过。
+#
+# 实测（2026-09-18）：ubuntu 与 macOS 全绿；Windows 需要额外装工具链，见下。
 
 name: Core Tests
 
@@ -28,8 +27,9 @@ jobs:
             experimental: false
           - os: macos-14
             experimental: false
-          # Windows 先不挡路：Swift for Windows 的 Foundation 偶有版本差异，
-          # 红了先看另外两个平台。跑绿了就把 experimental 改成 false。
+          # Windows runner 没有预装 Swift，需要显式装一份。
+          # 它先不挡路：万一 Swift for Windows 的 Foundation 有版本差异，
+          # 红了也只当参考，不阻塞另外两个平台。
           - os: windows-2022
             experimental: true
 
@@ -37,10 +37,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Linux runner 上的 Swift 版本不稳定，这里钉死一个，保证结果可复现。
-      # macOS 用 Xcode 自带的，Windows 用镜像里预装的。
-      - name: Setup Swift (Linux only)
-        if: runner.os == 'Linux'
+      # Linux / Windows 上 Swift 版本不稳定，这里钉死一个，保证结果可复现。
+      # macOS 用 Xcode 自带的。
+      - name: Setup Swift
+        if: runner.os != 'macOS'
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: "5.10"
