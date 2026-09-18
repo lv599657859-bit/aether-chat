@@ -43,16 +43,17 @@ jobs:
         with:
           swift-version: "5.10"
 
-      # Windows runner 没有预装 Swift，setup-swift 也没有 5.10 的 Windows 构建。
-      # 直接用 winget 装 —— 用户本机就是这么装的，这条 CI 因此同时验证了那份说明。
+      # Windows runner 没有预装 Swift。
+      # 两个坑：winget 在 runner 的 PowerShell 里不在 PATH；setup-swift 对
+      # 版本号要求精确到补丁（写 5.10 会报 "not available"，5.10.1 才有）。
+      # 这一步不挡路：装不上也不会让整个 job 崩在 setup 上，
+      # 后面的 swift --version 会把真实情况说出来。
       - name: Setup Swift (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          winget install --id Swift.Toolchain -e --accept-package-agreements --accept-source-agreements --disable-interactivity
-          $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
-          $user = [System.Environment]::GetEnvironmentVariable("Path","User")
-          "$machine;$user" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        continue-on-error: true
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "5.10.1"
 
       - name: Swift version
         run: swift --version
