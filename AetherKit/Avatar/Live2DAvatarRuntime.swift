@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// Live2D Cubism 的接入点。

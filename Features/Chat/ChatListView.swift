@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 struct ChatListView: View {

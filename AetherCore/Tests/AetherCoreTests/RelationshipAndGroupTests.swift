@@ -52,7 +52,6 @@ final class RelationshipAndGroupTests: XCTestCase {
         XCTAssertNotNil(result.milestone, "关系升级必须留下里程碑")
     }
 
-    @MainActor
     func testAddressedPersonaSpeaksFirst() {
         let a = PersonaFactory.forgeOriginal(name: "青", seed: .empty)
         let b = PersonaFactory.forgeOriginal(name: "白", seed: .empty)
@@ -72,7 +71,6 @@ final class RelationshipAndGroupTests: XCTestCase {
         XCTAssertEqual(turns.first?.personaID, a.id, "被点名的人必须优先接话")
     }
 
-    @MainActor
     func testRecentSpeakerYields() {
         let a = PersonaFactory.forgeOriginal(name: "青", seed: .empty)
         let b = PersonaFactory.forgeOriginal(name: "白", seed: .empty)

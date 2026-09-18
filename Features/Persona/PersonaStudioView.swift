@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 创造一个人的地方。

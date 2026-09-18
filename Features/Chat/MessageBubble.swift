@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 一条消息。

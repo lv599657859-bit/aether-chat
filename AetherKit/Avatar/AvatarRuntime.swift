@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 立绘/模型的统一接口。

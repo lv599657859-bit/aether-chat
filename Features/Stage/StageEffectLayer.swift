@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 屏幕演出层。

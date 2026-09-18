@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 2D 立绘运行时。

@@ -1,4 +1,3 @@
-import AetherCore
 import SwiftUI
 
 /// 聊天界面上方的「形象带」。

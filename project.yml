@@ -12,10 +12,6 @@ settings:
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     SWIFT_STRICT_CONCURRENCY: minimal
 
-packages:
-  AetherCore:
-    path: AetherCore
-
 targets:
   AetherChat:
     type: application
@@ -24,9 +20,15 @@ targets:
       - path: App
       - path: AetherKit
       - path: Features
-    dependencies:
-      - package: AetherCore
-        product: AetherCore
+      # 内核源码直接编进 app 模块。
+      #
+      # 为什么不把它当成 SwiftPM 依赖：SwiftPM 库的符号默认是 internal，
+      # 当成依赖就意味着要给内核里几乎每个类型、属性、方法，以及所有结构体的
+      # 成员初始化器都加 public —— 几百处机械修改，漏一处就编不过。
+      # 对「一个 app + 一套可独立测试的内核」这个规模来说，
+      # 让它以两种方式存在（app 内联编译 / 独立包跑测试）代价更小。
+      # 见 docs/07-无Mac测试.md。
+      - path: AetherCore/Sources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aether.chat

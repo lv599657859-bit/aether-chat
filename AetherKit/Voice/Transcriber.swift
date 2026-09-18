@@ -1,4 +1,3 @@
-import AetherCore
 import Foundation
 import Speech
 import AVFoundation

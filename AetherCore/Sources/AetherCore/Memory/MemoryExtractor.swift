@@ -95,39 +95,50 @@ final class MemoryExtractor: @unchecked Sendable {
         }
     }
 
-    /// 没有模型时的兜底：用简单规则抓「我叫…」「我喜欢…」这类句子。
+    /// 没有模型时的兜底：用简单规则抓「我叫…」「我不吃…」这类句子。
     /// 笨，但保证离线也能长记性。
+    ///
+    /// 两个踩过的坑，写在这里免得再犯：
+    ///   1. 一句话可能同时命中多类（「我叫小林，我不吃香菜」= 事实 + 偏好），
+    ///      所以命中之后不能 break。
+    ///   2. 记忆片段从**命中处**截到句尾，而不是整句照抄 ——
+    ///      否则两条记忆里会出现同一串字，检索时互相打架。
     func offlineExtract(userText: String, streamID: UUID, sourceMessageID: UUID?) -> [MemoryItem] {
         let patterns: [(String, MemoryItem.Kind, Double)] = [
-            ("我叫", .fact, 0.9), ("我是", .fact, 0.7), ("我住在", .fact, 0.7),
-            ("我住", .fact, 0.7), ("我今年", .fact, 0.6), ("我的生日", .fact, 0.85),
+            ("我叫", .fact, 0.9), ("我姓", .fact, 0.85), ("我是", .fact, 0.7),
+            ("我住在", .fact, 0.7), ("我住", .fact, 0.7),
+            ("我今年", .fact, 0.6), ("我的生日", .fact, 0.85),
             ("我喜欢", .preference, 0.6), ("我最喜欢", .preference, 0.7),
-            ("我不喜欢", .preference, 0.6), ("我讨厌", .preference, 0.6),
+            ("我不喜欢", .preference, 0.65), ("我讨厌", .preference, 0.65),
+            ("我不吃", .preference, 0.75), ("我不喝", .preference, 0.7),
             ("我不能吃", .preference, 0.75), ("我对.*过敏", .fact, 0.9),
             ("我答应", .promise, 0.8), ("约好", .promise, 0.8), ("说好", .promise, 0.8),
             ("其实我", .secret, 0.8), ("别告诉", .secret, 0.9),
         ]
+
         var items: [MemoryItem] = []
         for sentence in userText.split(whereSeparator: { "。！？!?\n".contains($0) }) {
             let s = String(sentence).trimmed
             guard s.count >= 4, s.count <= 60 else { continue }
             for (pattern, kind, salience) in patterns {
-                let matched = pattern.contains(".*")
-                    ? s.range(of: pattern, options: .regularExpression) != nil
-                    : s.contains(pattern)
-                if matched {
-                    items.append(MemoryItem(
-                        streamID: streamID,
-                        kind: kind,
-                        text: s,
-                        salience: salience,
-                        sourceMessageID: sourceMessageID
-                    ))
-                    break
-                }
+                let range = pattern.contains(".*")
+                    ? s.range(of: pattern, options: .regularExpression)
+                    : s.range(of: pattern)
+                guard let range else { continue }
+                let fragment = String(s[range.lowerBound...]).trimmed
+                guard fragment.count >= 3 else { continue }
+                guard !items.contains(where: { $0.kind == kind && $0.text == fragment }) else { continue }
+                items.append(MemoryItem(
+                    streamID: streamID,
+                    kind: kind,
+                    text: fragment,
+                    salience: salience,
+                    sourceMessageID: sourceMessageID
+                ))
             }
+            if items.count >= 4 { break }
         }
-        return Array(items.prefix(3))
+        return Array(items.prefix(4))
     }
 
     private func attachEmbeddings(_ items: [MemoryItem]) async -> [MemoryItem] {
