@@ -12,7 +12,7 @@ struct SubconsciousView: View {
     @Environment(AppEnvironment.self) private var env
     @Environment(\.dismiss) private var dismiss
 
-    @State private var section: Section = .overview
+    @State private var section: Panel = .overview
     @State private var footprint: WorldStore.Footprint?
     @State private var selectedPersonaID: UUID?
     @State private var memories: [MemoryItem] = []
@@ -23,7 +23,7 @@ struct SubconsciousView: View {
     @State private var inspectorNotes: [String] = []
     @State private var isInspecting = false
 
-    enum Section: String, CaseIterable {
+    enum Panel: String, CaseIterable {
         case overview, memory, context, relationship, scenes, settings
 
         var title: String {
@@ -42,7 +42,7 @@ struct SubconsciousView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 Picker("", selection: $section) {
-                    ForEach(Section.allCases, id: \.self) { Text($0.title).tag($0) }
+                    ForEach(Panel.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 12)
@@ -238,10 +238,12 @@ struct SubconsciousView: View {
     private var relationshipSection: some View {
         Section("她对你") {
             ForEach(env.personas) { persona in
-                let edge = edges.first { $0.fromID == persona.id && $0.toID == nil }
-                if let edge {
-                    EdgeCard(from: persona.name, to: "你", edge: edge)
-                }
+                EdgeCard(
+                    from: persona.name,
+                    to: "你",
+                    edge: edges.first { $0.fromID == persona.id && $0.toID == nil }
+                        ?? RelationshipEdge(fromID: persona.id, toID: nil)
+                )
             }
         }
 
@@ -251,10 +253,11 @@ struct SubconsciousView: View {
                 Text("他们还没认识。").font(.footnote).foregroundStyle(.secondary)
             } else {
                 ForEach(interEdges) { edge in
-                    if let from = env.persona(edge.fromID),
-                       let toID = edge.toID, let to = env.persona(toID) {
-                        EdgeCard(from: from.name, to: to.name, edge: edge)
-                    }
+                    EdgeCard(
+                        from: env.persona(edge.fromID)?.name ?? "?",
+                        to: edge.toID.flatMap { env.persona($0)?.name } ?? "?",
+                        edge: edge
+                    )
                 }
             }
         }

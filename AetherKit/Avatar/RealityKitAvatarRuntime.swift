@@ -71,7 +71,7 @@ final class RealityKitAvatarRuntime: AvatarRuntime {
         let height = max(0.01, bounds.extents.y)
         let scale = 1.4 / height
         entity.scale = SIMD3<Float>(repeating: scale)
-        entity.position = SIMD3<Float>(0, -0.7, 0)
+        entity.position = SIMD3<Float>(0, -0.7, -2.2)
 
         head = entity.findEntity(named: "Head") ?? entity.findEntity(named: "J_Bip_C_Head")
 
@@ -225,11 +225,7 @@ struct RealitySceneContainer: UIViewRepresentable {
 
         func mount(_ entity: Entity) {
             anchor?.addChild(entity)
-            // 相机放在正面略偏上的位置
-            view?.cameraTransform = Transform(
-                pitch: -0.05, yaw: 0, roll: 0,
-                translation: SIMD3<Float>(0, 0.15, 2.2)
-            )
+            // nonAR 模式下 ARView.cameraTransform 是只读的，改用模型自身的位置取景
         }
     }
 }
