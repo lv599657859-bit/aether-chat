@@ -144,8 +144,8 @@ final class VoiceNoteRecorder {
     /// 音强 -> 0...1。分贝是对数刻度，直接线性映射会让小声全是 0。
     private static func normalizedPower(_ power: Float) -> Float {
         guard power > -60 else { return 0.02 }
-        let normalized = (power + 60) / 60
-        return normalized.clamped(0, 1)
+        let normalized = (Double(power) + 60) / 60
+        return Float(normalized.clamped(0, 1))
     }
 
     /// 把整段录音的采样点压成固定根数，供气泡绘制。

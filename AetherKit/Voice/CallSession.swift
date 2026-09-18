@@ -195,7 +195,7 @@ final class CallSession {
     }
 
     private func handleLevel(_ db: Float) {
-        let normalized = Double(((db + 60) / 60).clamped(0, 1))
+        let normalized = ((Double(db) + 60) / 60).clamped(0, 1)
         inputLevel = max(inputLevel, normalized)
 
         // 打断检测：她说的时候你在说话，她就得停下来
