@@ -126,6 +126,12 @@ function run(command, args, { cwd, timeout = 180000, shell = false } = {}) {
   });
 }
 
+/** 某个命令在不在 PATH 里。 */
+async function hasCommand(name) {
+  const probe = await run(process.platform === "win32" ? "where" : "which", [name], { timeout: 8000, shell: false });
+  return probe.ok;
+}
+
 /**
  * 用一问一答的方式调用 dsh。
  *
@@ -138,9 +144,12 @@ async function runDshHeadless(prompt, timeout) {
   fs.writeFileSync(tmp, prompt, "utf8");
   try {
     if (process.platform === "win32") {
-      const result = await run("powershell", [
+      // -Encoding UTF8 不能省：Windows PowerShell 5.1 读无 BOM 文件默认按 ANSI，
+      // 中文资料会变成锟斤拷，模型收到的是乱码。优先用 pwsh（默认 UTF-8），没有就退回 powershell。
+      const shell = await hasCommand("pwsh") ? "pwsh" : "powershell";
+      const result = await run(shell, [
         "-NoProfile", "-NonInteractive", "-Command",
-        `& '${DSH_COMMAND}' --profile headless (Get-Content -Raw -LiteralPath '${tmp}')`,
+        `& '${DSH_COMMAND}' --profile headless (Get-Content -Raw -Encoding UTF8 -LiteralPath '${tmp}')`,
       ], { timeout, shell: false });
       return result;
     }
