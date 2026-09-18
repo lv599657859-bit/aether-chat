@@ -1,0 +1,89 @@
+# 云端编译回环 —— 没有 Mac 也能验证这份工程能不能编译。
+#
+# 用法：
+#   1. 把 AetherChat 推到一个 GitHub 仓库（公开库的 macOS runner 是免费的，且不限时长）
+#   2. push 之后自动触发；也可以在 Actions 页手动 Run workflow
+#   3. 跑完下载 build-log 这个 artifact，把报错贴回来给我改
+#
+# 注意：如果你把 AetherChat 文件夹本身当成仓库根目录，
+# 把下面所有 working-directory: AetherChat 删掉即可。
+
+name: iOS Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (iOS Simulator)
+    runs-on: macos-14
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: AetherChat
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # 关键一步：只编译，不签名。
+      # 没有 Apple 开发者账号也能跑，因为模拟器目标不要求签名。
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AetherChat.xcodeproj \
+            -scheme AetherChat \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build 2>&1 | tee build.log
+
+      # 测试是加分项，不挡住编译信号 —— 先让它跑，红了也先看编译结果。
+      - name: Test
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AetherChat.xcodeproj \
+            -scheme AetherChat \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            test 2>&1 | tee test.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: |
+            AetherChat/build.log
+            AetherChat/test.log
+          if-no-files-found: warn
+
+      # 编译过了就把 .app 存下来 —— 虽然模拟器包对 Windows 没用，
+      # 但它是「构建成功」最硬的证据。
+      - name: Upload app bundle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: AetherChat-simulator-app
+          path: AetherChat/build/DerivedData/Build/Products/Debug-iphonesimulator
+          if-no-files-found: warn
