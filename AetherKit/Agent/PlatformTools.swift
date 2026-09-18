@@ -8,6 +8,10 @@ import Foundation
 enum PlatformTools {
     static func install(into registry: ToolRegistry = .builtin) {
         registry.register(DesignVoiceTool())
+        // 远程桥接的工具。没配对 / 没开开关时，它们会在调用时直接返回
+        // 「还没有连接电脑上的桥接」，而不是从工具表里消失 ——
+        // 这样代理知道有这么个东西存在，只是现在用不了。
+        RemoteBridgeTools.install(into: registry)
     }
 }
 

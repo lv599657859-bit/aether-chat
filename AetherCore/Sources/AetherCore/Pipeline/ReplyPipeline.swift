@@ -59,6 +59,7 @@ final class ReplyPipeline: @unchecked Sendable {
         pipeline.add(RateLimitStage())
         pipeline.add(InterestStage())
         pipeline.add(MindFlowStage())
+        pipeline.add(ExpressionStage())
         pipeline.add(ImmersionStage())
         return pipeline
     }()
@@ -226,6 +227,21 @@ struct MindFlowStage: ReplyStage {
     func process(_ context: inout ReplyContext) async -> PipelineDecision {
         let thread = await MindFlow.shared.thread(for: context.persona.id)
         guard let briefing = thread.briefing else { return .proceed }
+        return .annotate(briefing)
+    }
+}
+
+/// 表达学习 —— 把「她跟你学的说法」注入这一轮。
+///
+/// 放在心流之后、守门之前：先有状态，再有说话的习惯，最后才是禁令。
+struct ExpressionStage: ReplyStage {
+    let name = "表达学习"
+    let order = 35
+
+    func process(_ context: inout ReplyContext) async -> PipelineDecision {
+        guard let briefing = await ExpressionLearner.shared.briefing(for: context.persona) else {
+            return .proceed
+        }
         return .annotate(briefing)
     }
 }

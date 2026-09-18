@@ -85,6 +85,17 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    NavigationLink {
+                        RemoteBridgeView()
+                    } label: {
+                        HStack {
+                            Label("电脑桥接", systemImage: "desktopcomputer")
+                            Spacer()
+                            Text(RemoteBridgeStore.load().enabled ? "已开启" : "未开启")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 } header: {
                     Text("代理")
                 } footer: {

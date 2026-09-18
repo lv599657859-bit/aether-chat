@@ -283,6 +283,10 @@ final class ChatOrchestrator: @unchecked Sendable {
         lastMessageID: UUID?,
         settings: AppSettings
     ) async {
+        // 表达学习：本地统计每条都做（便宜），模型精修隔一阵做一次
+        await ExpressionLearner.shared.observe(userText: userText, personaID: persona.id)
+        await ExpressionLearner.shared.noteUsed(personaID: persona.id, text: replyText)
+
         // 记忆抽取
         let extractor = MemoryExtractor(provider: ProviderHub.shared.llm, embedder: ProviderHub.shared.embedder)
         let items = await extractor.extract(
@@ -300,6 +304,12 @@ final class ChatOrchestrator: @unchecked Sendable {
         let history = await store.messages(in: conversation.id)
         let totalChars = history.reduce(0) { $0 + $1.text.count }
         guard totalChars > settings.autoSummarizeThreshold else { return }
+
+        // 每隔一打消息，让模型从最近的对话里挑一次「值得学的说法」
+        if history.count % 12 == 0 {
+            let userTexts = history.filter { $0.isFromUser }.suffix(20).map { $0.text }
+            await ExpressionLearner.shared.refine(persona: persona, recentUserTexts: userTexts)
+        }
 
         let summarizer = Summarizer(provider: ProviderHub.shared.llm)
         guard let current = await store.conversation(conversation.id) else { return }
