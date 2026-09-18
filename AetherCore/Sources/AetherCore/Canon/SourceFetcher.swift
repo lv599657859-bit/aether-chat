@@ -108,7 +108,7 @@ final class MediaWikiFetcher: CanonSourceFetcher, @unchecked Sendable {
         var request = URLRequest(url: url)
         request.setValue("AetherChat/0.1 (character canon research)", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 20
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.aetherData(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw LLMError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1, "")
         }

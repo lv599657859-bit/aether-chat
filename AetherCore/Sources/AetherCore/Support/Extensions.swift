@@ -21,7 +21,7 @@ extension Array where Element == Float {
     /// 归一化到 0...1，用于语音波形绘制。
     func normalizedPeaks() -> [Float] {
         guard let maxV = map({ abs($0) }).max(), maxV > 0 else { return self }
-        return map { min(1, abs($0) / maxV) }
+        return map { Swift.min(1, abs($0) / maxV) }
     }
 }
 

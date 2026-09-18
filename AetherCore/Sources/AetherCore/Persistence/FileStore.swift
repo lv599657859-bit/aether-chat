@@ -1,12 +1,19 @@
 import Foundation
 
 /// 极简本地存储：JSON 落盘 + 原子写。
+///
 /// 之所以不上 SQLite/SwiftData：这一步的目标是「今天就能跑起来、数据完全在本地」。
-/// 消息量破万后把 messages/ 换成 GRDB 即可，上层接口不用动 —— 见 docs/03。
-actor FileStore {
+/// 消息量破万后把 messages/ 换成 GRDB 即可，上层接口不用动 —— 见 docs/01。
+///
+/// 为什么是类而不是 actor：它的调用方（WorldStore、InterCharacterLog）本身已经是 actor，
+/// 磁盘 IO 不会碰到主线程；再套一层 actor 只会让调用方到处需要 await，
+/// 而 Swift 不允许在一个 actor 里同步调用另一个 actor 的方法。
+/// 内部用 NSLock 保证并发安全就够了。
+final class FileStore: @unchecked Sendable {
     private let root: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let lock = NSLock()
 
     init(root: URL? = nil) {
         let base = root ?? FileManager.default
@@ -39,6 +46,8 @@ actor FileStore {
     }
 
     func load<T: Decodable>(_ type: T.Type, from path: String) -> T? {
+        lock.lock()
+        defer { lock.unlock() }
         let u = url(path)
         guard let data = try? Data(contentsOf: u) else { return nil }
         do {
@@ -50,6 +59,8 @@ actor FileStore {
     }
 
     func save<T: Encodable>(_ value: T, to path: String) {
+        lock.lock()
+        defer { lock.unlock() }
         let u = url(path)
         ensureParent(u)
         do {
@@ -61,6 +72,8 @@ actor FileStore {
     }
 
     func delete(_ path: String) {
+        lock.lock()
+        defer { lock.unlock() }
         try? FileManager.default.removeItem(at: url(path))
     }
 
@@ -70,6 +83,8 @@ actor FileStore {
 
     /// 全库备份打包（用于「把角色带走」/ 迁移设备）。
     func exportArchive(to destination: URL) throws {
+        lock.lock()
+        defer { lock.unlock() }
         if FileManager.default.fileExists(atPath: destination.path) {
             try FileManager.default.removeItem(at: destination)
         }

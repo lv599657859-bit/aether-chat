@@ -17,7 +17,7 @@ final class MockProvider: LLMProvider, @unchecked Sendable {
 
     func stream(_ request: LLMRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task {
+            let task = Task { [self] in
                 let system = request.messages.first(where: { $0.role == .system })?.content ?? ""
                 let name = Self.extractName(from: system)
                 let lastUser = request.messages.last(where: { $0.role == .user })?.content ?? ""

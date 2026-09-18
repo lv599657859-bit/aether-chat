@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -27,18 +28,13 @@ final class OpenAICompatibleProvider: LLMProvider, @unchecked Sendable {
 
     func stream(_ request: LLMRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
-            let task = Task {
+            let task = Task { [self] in
                 do {
                     guard !apiKey.isEmpty else { throw LLMError.missingAPIKey }
-                    var urlRequest = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
-                    urlRequest.httpMethod = "POST"
-                    urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-                    urlRequest.timeoutInterval = 120
-                    urlRequest.httpBody = try JSONSerialization.data(
-                        withJSONObject: Self.body(from: request), options: []
-                    )
+                    let urlRequest = try makeRequest(request)
 
+#if canImport(Darwin)
+                    // 苹果平台：真正的 SSE 流式
                     let (bytes, response) = try await session.bytes(for: urlRequest)
                     guard let http = response as? HTTPURLResponse else { throw LLMError.empty }
                     guard (200..<300).contains(http.statusCode) else {
@@ -46,19 +42,22 @@ final class OpenAICompatibleProvider: LLMProvider, @unchecked Sendable {
                         for try await line in bytes.lines { collected += line }
                         throw LLMError.badStatus(http.statusCode, collected)
                     }
-
                     for try await line in bytes.lines {
-                        guard line.hasPrefix("data:") else { continue }
-                        let payload = line.dropFirst(5).trimmed
-                        if payload == "[DONE]" { break }
-                        guard let data = payload.data(using: .utf8),
-                              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                              let choices = json["choices"] as? [[String: Any]],
-                              let delta = choices.first?["delta"] as? [String: Any],
-                              let text = delta["content"] as? String
-                        else { continue }
-                        continuation.yield(text)
+                        if let delta = Self.delta(fromSSELine: line) { continuation.yield(delta) }
                     }
+#else
+                    // 非苹果平台（Linux / Windows）：内核在这边只用来跑逻辑测试，
+                    // 网络路径退化成一次性请求 + 按行切分，语义等价，只是不再逐字流出。
+                    let (data, response) = try await session.aetherData(for: urlRequest)
+                    guard let http = response as? HTTPURLResponse else { throw LLMError.empty }
+                    guard (200..<300).contains(http.statusCode) else {
+                        throw LLMError.badStatus(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+                    }
+                    let text = String(data: data, encoding: .utf8) ?? ""
+                    for line in text.split(separator: "\n") {
+                        if let delta = Self.delta(fromSSELine: String(line)) { continuation.yield(delta) }
+                    }
+#endif
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -66,6 +65,33 @@ final class OpenAICompatibleProvider: LLMProvider, @unchecked Sendable {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
+    }
+
+    /// 从一行 SSE 里取出增量文本。
+    private static func delta(fromSSELine line: String) -> String? {
+        let trimmed = line.trimmed
+        guard trimmed.hasPrefix("data:") else { return nil }
+        let payload = String(trimmed.dropFirst(5)).trimmed
+        guard payload != "[DONE]" else { return nil }
+        guard let data = payload.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any],
+              let text = delta["content"] as? String
+        else { return nil }
+        return text
+    }
+
+    private func makeRequest(_ request: LLMRequest) throws -> URLRequest {
+        var urlRequest = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        urlRequest.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.timeoutInterval = 120
+        urlRequest.httpBody = try JSONSerialization.data(
+            withJSONObject: Self.body(from: request), options: []
+        )
+        return urlRequest
     }
 
     private static func body(from request: LLMRequest) -> [String: Any] {
@@ -117,9 +143,10 @@ final class OpenAIImageProvider: ImageProvider, @unchecked Sendable {
             "size": aspect.rawValue,
             "n": 1,
         ])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.aetherData(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw LLMError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1, String(data: data, encoding: .utf8) ?? "")
+            throw LLMError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1,
+                                     String(data: data, encoding: .utf8) ?? "")
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let items = json["data"] as? [[String: Any]],
@@ -129,14 +156,14 @@ final class OpenAIImageProvider: ImageProvider, @unchecked Sendable {
             return decoded
         }
         if let urlString = first["url"] as? String, let url = URL(string: urlString) {
-            let (imageData, _) = try await URLSession.shared.data(from: url)
+            let (imageData, _) = try await URLSession.shared.aetherData(from: url)
             return imageData
         }
         throw LLMError.empty
     }
 }
 
-/// 向量化：长期记忆检索。默认走 OpenAI embeddings。
+/// 向量化：长期记忆检索。
 final class OpenAIEmbeddingProvider: EmbeddingProvider, @unchecked Sendable {
     private let baseURL: URL
     private let apiKey: String
@@ -156,9 +183,10 @@ final class OpenAIEmbeddingProvider: EmbeddingProvider, @unchecked Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "input": texts])
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.aetherData(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw LLMError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1, String(data: data, encoding: .utf8) ?? "")
+            throw LLMError.badStatus((response as? HTTPURLResponse)?.statusCode ?? -1,
+                                     String(data: data, encoding: .utf8) ?? "")
         }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let items = json["data"] as? [[String: Any]] else { throw LLMError.empty }

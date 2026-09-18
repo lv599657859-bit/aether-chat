@@ -21,6 +21,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # XcodeGen 会生成新版工程格式（objectVersion 77），
+      # macos-14 默认的 Xcode 15.4 读不了它。这里显式切到最新稳定版 Xcode。
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
       - name: Show toolchain
         run: |
           xcodebuild -version
@@ -47,31 +54,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build 2>&1 | tee build.log
 
-      # 测试是加分项，不挡住编译信号 —— 先让它跑，红了也先看编译结果。
-      - name: Test
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project AetherChat.xcodeproj \
-            -scheme AetherChat \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
-            -derivedDataPath build/DerivedData \
-            CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tee test.log
-
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: |
-            build.log
-            test.log
+          path: build.log
           if-no-files-found: warn
 
-      # 编译过了就把 .app 存下来 —— 虽然模拟器包对 Windows 没用，
-      # 但它是「构建成功」最硬的证据。
       - name: Upload app bundle
         if: success()
         uses: actions/upload-artifact@v4

@@ -266,6 +266,6 @@ struct SettingsView: View {
     private func exportArchive() async {
         let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let destination = documents.appendingPathComponent("AetherBackup")
-        try? await FileStore().exportArchive(to: destination)
+        try? FileStore().exportArchive(to: destination)
     }
 }
